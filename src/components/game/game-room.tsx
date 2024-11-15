@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { db, auth } from '@/lib/firebase';
 import { ref, onValue, set, update, get } from 'firebase/database';
@@ -28,57 +28,7 @@ export function GameRoom() {
   const [senderUsername, setSenderUsername] = useState('');
   const [playerColor, setPlayerColor] = useState<'black' | 'white'>();
 
-  useEffect(() => {
-    if (!roomId || !user) return;
-
-    const gameRef = ref(db, `games/${roomId}`);
-    const unsubscribe = onValue(gameRef, (snapshot) => {
-      const data = snapshot.val();
-      if (data) {
-        setGameState(data);
-      }
-    });
-
-    return () => {
-      // Cleanup when leaving the room
-      handleLeaveRoom().catch(error => {
-        console.error('Error leaving room on cleanup:', error);
-      });
-      unsubscribe();
-    };
-  }, [roomId, user]);
-
-  useEffect(() => {
-    if (!auth.currentUser) return;
-
-    // Get sender's username
-    const userRef = ref(db, 'usernames');
-    const unsubscribe = onValue(userRef, (snapshot) => {
-      const data = snapshot.val() || {};
-      const currentUsername = Object.keys(data).find(key => data[key] === auth.currentUser?.uid);
-      setSenderUsername(currentUsername || '');
-    });
-
-    return () => unsubscribe();
-  }, []);
-
-  useEffect(() => {
-    const gameRef = ref(db, `games/${roomId}`);
-    const unsubscribe = onValue(gameRef, (snapshot) => {
-      const data = snapshot.val();
-      if (data?.players && auth.currentUser) {
-        // Set the player's color based on their entry in the players object
-        const playerData = data.players[auth.currentUser.uid];
-        if (playerData) {
-          setPlayerColor(playerData.color);
-        }
-      }
-    });
-
-    return () => unsubscribe();
-  }, [roomId]);
-
-  const handleLeaveRoom = async () => {
+  const handleLeaveRoom = useCallback(async () => {
     if (!roomId || !user) return;
 
     try {
@@ -133,7 +83,56 @@ export function GameRoom() {
     } catch (error) {
       console.error('Error leaving room:', error);
     }
-  };
+  }, [roomId, user]);
+
+  useEffect(() => {
+    if (!roomId || !user) return;
+
+    const gameRef = ref(db, `games/${roomId}`);
+    const unsubscribe = onValue(gameRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        setGameState(data);
+      }
+    });
+
+    return () => {
+      handleLeaveRoom().catch(error => {
+        console.error('Error leaving room on cleanup:', error);
+      });
+      unsubscribe();
+    };
+  }, [roomId, user, handleLeaveRoom]);
+
+  useEffect(() => {
+    if (!auth.currentUser) return;
+
+    // Get sender's username
+    const userRef = ref(db, 'usernames');
+    const unsubscribe = onValue(userRef, (snapshot) => {
+      const data = snapshot.val() || {};
+      const currentUsername = Object.keys(data).find(key => data[key] === auth.currentUser?.uid);
+      setSenderUsername(currentUsername || '');
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    const gameRef = ref(db, `games/${roomId}`);
+    const unsubscribe = onValue(gameRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data?.players && auth.currentUser) {
+        // Set the player's color based on their entry in the players object
+        const playerData = data.players[auth.currentUser.uid];
+        if (playerData) {
+          setPlayerColor(playerData.color);
+        }
+      }
+    });
+
+    return () => unsubscribe();
+  }, [roomId]);
 
   const handleMove = async (from: number[], to: number[]) => {
     if (!roomId || !user || !gameState) return;
@@ -258,10 +257,10 @@ export function GameRoom() {
           </div>
 
           <Board
-            gameId={roomId}
+            gameId={roomId!}  // Non-null assertion
             isPlayerTurn={isPlayerTurn}
             onMove={handleMove}
-            playerColor={playerColor}
+            playerColor={playerColor || 'black'}
           />
         </div>
       </div>
