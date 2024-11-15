@@ -1,80 +1,107 @@
-import { useState, useEffect } from 'react';
-import { cn } from '@/lib/utils';
+import { useState, useEffect } from "react";
+import { cn } from "@/lib/utils";
+import { onValue, ref } from "firebase/database";
+import { db } from "@/lib/firebase";
 
 interface BoardProps {
   gameId: string;
   isPlayerTurn: boolean;
   onMove: (from: number[], to: number[]) => void;
+  playerColor: 'black' | 'white';
 }
 
-export function Board({ gameId, isPlayerTurn, onMove }: BoardProps) {
+export function Board({ gameId, isPlayerTurn, onMove, playerColor }: BoardProps) {
   const [selectedPiece, setSelectedPiece] = useState<number[] | null>(null);
-  const [board, setBoard] = useState<number[][]>(initializeBoard());
+  const [board, setBoard] = useState<number[][]>([]);
 
-  function initializeBoard() {
-    const board = Array(8).fill(null).map(() => Array(8).fill(0));
-    // Set up black pieces (1)
-    for (let i = 0; i < 3; i++) {
-      for (let j = 0; j < 8; j++) {
-        board[i][j] = 1;
+  useEffect(() => {
+    const gameRef = ref(db, `games/${gameId}`);
+    const unsubscribe = onValue(gameRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data?.board) {
+        setBoard(data.board);
       }
-    }
-    // Set up white pieces (2)
-    for (let i = 5; i < 8; i++) {
-      for (let j = 0; j < 8; j++) {
-        board[i][j] = 2;
-      }
-    }
-    return board;
-  }
+    });
 
-  const handleSquareClick = (row: number, col: number) => {
+    return () => unsubscribe();
+  }, [gameId]);
+
+  const handleSquareClick = (rowIndex: number, colIndex: number) => {
     if (!isPlayerTurn) return;
 
-    if (selectedPiece) {
-      // Handle move
-      const [selectedRow, selectedCol] = selectedPiece;
-      if (isValidMove(selectedRow, selectedCol, row, col)) {
-        onMove(selectedPiece, [row, col]);
-        setSelectedPiece(null);
-      } else {
-        setSelectedPiece(null);
+    const piece = board[rowIndex][colIndex];
+    // Only allow selecting own pieces
+    if (!selectedPiece && piece !== 0) {
+      const isBlackPiece = piece === 1;
+      const isWhitePiece = piece === 2;
+
+      // Debug logs to help identify the issue
+      console.log('Player Color:', playerColor);
+      console.log('Piece Selected:', piece);
+      console.log('Is Black Piece:', isBlackPiece);
+      console.log('Is White Piece:', isWhitePiece);
+
+      if ((playerColor === 'black' && !isBlackPiece) ||
+          (playerColor === 'white' && !isWhitePiece)) {
+        return; // Can't select opponent's pieces
       }
-    } else {
-      // Select piece
-      if (board[row][col] !== 0) {
-        setSelectedPiece([row, col]);
+      setSelectedPiece([rowIndex, colIndex]);
+    } else if (selectedPiece) {
+      // Check if the move is valid
+      const playerColorNumber = playerColor === 'black' ? 1 : 2;
+      if (isValidMove(selectedPiece[0], selectedPiece[1], rowIndex, colIndex, playerColorNumber)) {
+        // Pass arrays for from and to positions
+        onMove([selectedPiece[0], selectedPiece[1]], [rowIndex, colIndex]);
       }
+      setSelectedPiece(null);
     }
   };
 
-  const isValidMove = (fromRow: number, fromCol: number, toRow: number, toCol: number) => {
-    // Implement Turkish Draughts move validation logic here
-    return true; // Placeholder
+  const isValidMove = (fromRow: number, fromCol: number, toRow: number, toCol: number, playerColorNumber: number) => {
+    if (board[toRow][toCol] !== 0) return false;
+
+    // Basic movement rules
+    const isForwardMove = playerColorNumber === 1 ? toRow > fromRow : toRow < fromRow;
+    if (!isForwardMove) return false;
+
+    // Check if it's a regular move (one square forward)
+    const isRegularMove = Math.abs(toRow - fromRow) === 1 && Math.abs(toCol - fromCol) === 0;
+
+    // Check if it's a capture move
+    const isCaptureMove = Math.abs(toRow - fromRow) === 2 && Math.abs(toCol - fromCol) === 0;
+
+    if (isCaptureMove) {
+      // Check if there's an opponent's piece to capture
+      const middleRow = (fromRow + toRow) / 2;
+      const middlePiece = board[middleRow][fromCol];
+      return middlePiece !== 0 && middlePiece !== playerColorNumber;
+    }
+
+    return isRegularMove;
   };
 
   return (
     <div className="bg-amber-100 p-4 rounded-lg shadow-lg">
       <div className="grid grid-cols-8 gap-1">
         {board.map((row, rowIndex) => (
-          row.map((piece, colIndex) => (
-            <button
+          row.map((cell, colIndex) => (
+            <div
               key={`${rowIndex}-${colIndex}`}
-              onClick={() => handleSquareClick(rowIndex, colIndex)}
               className={cn(
-                'w-16 h-16 flex items-center justify-center rounded-sm transition-colors',
-                (rowIndex + colIndex) % 2 === 0 ? 'bg-amber-200' : 'bg-amber-300',
-                selectedPiece?.[0] === rowIndex && selectedPiece?.[1] === colIndex && 'ring-2 ring-blue-500'
+                "w-16 h-16 border border-amber-900/20 flex items-center justify-center cursor-pointer",
+                selectedPiece?.[0] === rowIndex && selectedPiece?.[1] === colIndex && "bg-yellow-200",
+                isPlayerTurn && "hover:bg-amber-50"
               )}
+              onClick={() => handleSquareClick(rowIndex, colIndex)}
             >
-              {piece !== 0 && (
+              {cell !== 0 && (
                 <div className={cn(
-                  'w-12 h-12 rounded-full shadow-md transition-transform',
-                  piece === 1 ? 'bg-gray-900' : 'bg-gray-100',
-                  'hover:scale-105'
+                  "w-12 h-12 rounded-full",
+                  cell === 1 ? "bg-black" : "bg-white border-2 border-gray-300",
+                  "shadow-md"
                 )} />
               )}
-            </button>
+            </div>
           ))
         ))}
       </div>

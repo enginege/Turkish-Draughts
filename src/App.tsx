@@ -5,12 +5,13 @@ import { GameRoom } from './components/game/game-room';
 import { Lobby } from './components/lobby/lobby';
 import { Navbar } from './components/ui/navbar';
 import { useAuth } from './hooks/use-auth';
+import { AuthProvider } from "@/context/auth-context";
 
 function App() {
   const { user } = useAuth();
 
   return (
-    <>
+    <AuthProvider>
       <Router>
         {user && <Navbar />}
         <div className={user ? 'pl-20' : ''}>
@@ -21,7 +22,7 @@ function App() {
         </div>
       </Router>
       <Toaster position="top-right" />
-    </>
+    </AuthProvider>
   );
 }
 

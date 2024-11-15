@@ -26,6 +26,7 @@ export function GameRoom() {
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [inviteUsername, setInviteUsername] = useState('');
   const [senderUsername, setSenderUsername] = useState('');
+  const [playerColor, setPlayerColor] = useState<'black' | 'white'>();
 
   useEffect(() => {
     if (!roomId || !user) return;
@@ -60,6 +61,22 @@ export function GameRoom() {
 
     return () => unsubscribe();
   }, []);
+
+  useEffect(() => {
+    const gameRef = ref(db, `games/${roomId}`);
+    const unsubscribe = onValue(gameRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data?.players && auth.currentUser) {
+        // Set the player's color based on their entry in the players object
+        const playerData = data.players[auth.currentUser.uid];
+        if (playerData) {
+          setPlayerColor(playerData.color);
+        }
+      }
+    });
+
+    return () => unsubscribe();
+  }, [roomId]);
 
   const handleLeaveRoom = async () => {
     if (!roomId || !user) return;
@@ -123,10 +140,18 @@ export function GameRoom() {
     if (gameState.currentTurn !== user.uid) return;
 
     const gameRef = ref(db, `games/${roomId}`);
-    const newBoard = [...gameState.board];
+    const newBoard = JSON.parse(JSON.stringify(gameState.board));
     const [fromRow, fromCol] = from;
     const [toRow, toCol] = to;
 
+    // Check if it's a capture move
+    if (Math.abs(toRow - fromRow) === 2) {
+      // Remove the captured piece
+      const middleRow = (fromRow + toRow) / 2;
+      newBoard[middleRow][fromCol] = 0;
+    }
+
+    // Move the piece
     newBoard[toRow][toCol] = newBoard[fromRow][fromCol];
     newBoard[fromRow][fromCol] = 0;
 
@@ -180,7 +205,6 @@ export function GameRoom() {
   }
 
   const isPlayerTurn = gameState.currentTurn === user?.uid;
-  const playerColor = user ? gameState.players[user.uid]?.color : null;
   const opponent = Object.entries(gameState.players).find(([id]) => id !== user?.uid);
 
   return (
@@ -237,6 +261,7 @@ export function GameRoom() {
             gameId={roomId}
             isPlayerTurn={isPlayerTurn}
             onMove={handleMove}
+            playerColor={playerColor}
           />
         </div>
       </div>

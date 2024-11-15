@@ -35,16 +35,16 @@ export function Lobby() {
       const roomRef = push(ref(db, 'rooms'));
       const gameRef = ref(db, `games/${roomRef.key}`);
 
-      // Initialize empty board
+      // Initialize empty board with 8 rows instead of 6
       const emptyBoard = Array(8).fill(null).map(() => Array(8).fill(0));
-      
+
       // Set up initial pieces
-      for (let i = 0; i < 3; i++) {
+      for (let i = 1; i < 3; i++) {
         for (let j = 0; j < 8; j++) {
           emptyBoard[i][j] = 1; // Black pieces
         }
       }
-      for (let i = 5; i < 8; i++) {
+      for (let i = 5; i < 7; i++) {
         for (let j = 0; j < 8; j++) {
           emptyBoard[i][j] = 2; // White pieces
         }
