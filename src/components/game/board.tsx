@@ -29,6 +29,7 @@ export function Board({ gameId, isPlayerTurn, onMove, playerColor }: BoardProps)
   const [validMoves, setValidMoves] = useState<number[][]>([]);
   const [sequencePath, setSequencePath] = useState<number[][]>([]);
   const [currentSequence, setCurrentSequence] = useState<CaptureSequence | null>(null);
+  const [promotionSquares, setPromotionSquares] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const gameRef = ref(db, `games/${gameId}`);
@@ -173,6 +174,10 @@ export function Board({ gameId, isPlayerTurn, onMove, playerColor }: BoardProps)
     return sequences;
   };
 
+  const willPromoteToKing = (row: number, piece: number) => {
+    return (piece === 1 && row === 7) || (piece === 2 && row === 0);
+  };
+
   const findCaptureSequences = (
     row: number,
     col: number,
@@ -217,6 +222,11 @@ export function Board({ gameId, isPlayerTurn, onMove, playerColor }: BoardProps)
             moves: [...sequence.moves, [x, y]],
             captures: [...sequence.captures, enemyPos]
           };
+
+          // Check if this move results in a promotion
+          if (willPromoteToKing(x, piece)) {
+            setPromotionSquares(prev => new Set([...prev, `${x},${y}`]));
+          }
 
           const furtherSequences = findCaptureSequences(x, y, newSequence, newBoard);
           if (furtherSequences.length > 0) {
@@ -387,6 +397,7 @@ export function Board({ gameId, isPlayerTurn, onMove, playerColor }: BoardProps)
             setValidMoves([]);
             setSequencePath([]);
             setCurrentSequence(null);
+            setPromotionSquares(new Set());
           }
         }
       } else if (isValidMove) {
@@ -426,11 +437,10 @@ export function Board({ gameId, isPlayerTurn, onMove, playerColor }: BoardProps)
             <div
               key={`${rowIndex}-${colIndex}`}
               className={cn(
-                "w-16 h-16 border border-amber-900/20 flex items-center justify-center cursor-pointer",
+                "w-16 h-16 border border-amber-900/20 flex items-center justify-center cursor-pointer relative",
                 selectedPiece?.[0] === rowIndex && selectedPiece?.[1] === colIndex && "bg-yellow-200",
                 validMoves.some(([row, col]) => row === rowIndex && col === colIndex) &&
                   "ring-2 ring-green-500 ring-inset",
-                // Show intermediate moves with a different style
                 sequencePath.some(([row, col]) => row === rowIndex && col === colIndex) &&
                   !validMoves.some(([row, col]) => row === rowIndex && col === colIndex) &&
                   "ring-2 ring-green-300 ring-inset ring-opacity-50",
@@ -447,6 +457,13 @@ export function Board({ gameId, isPlayerTurn, onMove, playerColor }: BoardProps)
                   {isKing(rowIndex, colIndex) && (
                     <div className="text-2xl text-amber-500">♔</div>
                   )}
+                </div>
+              )}
+              {promotionSquares.has(`${rowIndex},${colIndex}`) && (
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <div className="text-2xl text-amber-500/60 animate-bounce-gentle drop-shadow-sm">
+                    ♔
+                  </div>
                 </div>
               )}
             </div>
