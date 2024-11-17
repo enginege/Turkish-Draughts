@@ -19,6 +19,11 @@ interface GameState {
   };
 }
 
+interface CaptureSequence {
+  moves: number[][];
+  captures: number[][];
+}
+
 export function GameRoom() {
   const { roomId } = useParams();
   const navigate = useNavigate();
@@ -134,8 +139,7 @@ export function GameRoom() {
     return () => unsubscribe();
   }, [roomId]);
 
-  const handleMove = async (from: number[], to: number[]) => {
-    if (!roomId || !user || !gameState) return;
+  const handleMove = async (from: number[], to: number[], sequence?: CaptureSequence & { isComplete?: boolean }) => {
     if (gameState.currentTurn !== user.uid) return;
 
     const gameRef = ref(db, `games/${roomId}`);
@@ -143,21 +147,69 @@ export function GameRoom() {
     const [fromRow, fromCol] = from;
     const [toRow, toCol] = to;
 
-    // Check if it's a capture move
-    if (Math.abs(toRow - fromRow) === 2) {
-      // Remove the captured piece
-      const middleRow = (fromRow + toRow) / 2;
-      newBoard[middleRow][fromCol] = 0;
+    const currentKings = new Set(gameState.kings || []);
+    const isKing = currentKings.has(`${fromRow},${fromCol}`);
+
+    if (sequence) {
+      // Execute single capture in the sequence
+      const [captureRow, captureCol] = sequence.captures[0];
+      // Remove captured king from kings set if it was a king
+      if (currentKings.has(`${captureRow},${captureCol}`)) {
+        currentKings.delete(`${captureRow},${captureCol}`);
+      }
+      newBoard[captureRow][captureCol] = 0;
+    } else {
+      // Single capture logic
+      const dx = Math.sign(toRow - fromRow);
+      const dy = Math.sign(toCol - fromCol);
+      const isCapture = Math.abs(toRow - fromRow) >= 2 || Math.abs(toCol - fromCol) >= 2;
+
+      if (isCapture) {
+        let x = fromRow + dx;
+        let y = fromCol + dy;
+        while (x !== toRow || y !== toCol) {
+          if (newBoard[x][y] !== 0) {
+            // Remove captured king from kings set if it was a king
+            if (currentKings.has(`${x},${y}`)) {
+              currentKings.delete(`${x},${y}`);
+            }
+            newBoard[x][y] = 0;
+            break;
+          }
+          x += dx;
+          y += dy;
+        }
+      }
     }
 
     // Move the piece
     newBoard[toRow][toCol] = newBoard[fromRow][fromCol];
     newBoard[fromRow][fromCol] = 0;
 
+    // Handle king status for moving piece
+    if (isKing) {
+      currentKings.delete(`${fromRow},${fromCol}`);
+      currentKings.add(`${toRow},${toCol}`);
+    }
+
+    // Check for new king promotion
+    const isBlackPiece = newBoard[toRow][toCol] === 1;
+    const isWhitePiece = newBoard[toRow][toCol] === 2;
+    const reachedEnd = (isBlackPiece && toRow === 7) || (isWhitePiece && toRow === 0);
+
+    if (reachedEnd) {
+      currentKings.add(`${toRow},${toCol}`);
+    }
+
+    // Only change turns if this is a regular move or we've completed the entire sequence
+    const isSequenceComplete = !sequence || sequence.isComplete;
+
     await set(gameRef, {
       ...gameState,
       board: newBoard,
-      currentTurn: Object.keys(gameState.players).find(id => id !== user.uid),
+      // Only change turn if sequence is complete
+      ...(isSequenceComplete && { currentTurn: Object.keys(gameState.players).find(id => id !== user.uid) }),
+      kings: Array.from(currentKings)
     });
   };
 
